@@ -202,7 +202,8 @@ class ChangeAnalysis(object):
         classNameField_to = parameters[5].valueAsText
         fromClassNames = parameters[6].valueAsText
         toClassNames = parameters[7].valueAsText
-        
+
+        #function to filter input rasters based on parameters
         def filterClause(fromValue, toValue, returnType):
             if filterMethod == "All":
                 if returnType == "String":
@@ -217,6 +218,7 @@ class ChangeAnalysis(object):
             filterClause *= (fromValue * toValue != 0)
             return filterClause
 
+        #funtion to convert raster to numpy array
         def rasterToNumpy(rasterObj, classValueList):
             numpyArray = arcpy.RasterToNumPyArray(rasterObj,nodata_to_value=0)
             uniqueValues = numpy.unique(numpyArray)
@@ -225,6 +227,7 @@ class ChangeAnalysis(object):
                     numpyArray[numpyArray == value] = 0
             return numpyArray
 
+        #function to add new fields to output raster
         def addFields(outputRaster, classNameLists, inputClassField):
             if classNameField_from.lower() == "value":
                 fieldType = "LONG"
@@ -250,24 +253,14 @@ class ChangeAnalysis(object):
         fromClassNameList = fromClassNames.split(";")
         toClassNameList = toClassNames.split(";") 
 
-        arcpy.AddMessage((fromClassNameList))
-        arcpy.AddMessage((toClassNameList))
-
         #Create a Dictionary & populate with Values & Names from From & To Rasters
         fromRasterList = [(row[0],row[1]) for row in arcpy.da.SearchCursor(
                                             fromRaster, ["Value", classNameField_from])]
         toRasterList   = [(row[0],row[1]) for row in arcpy.da.SearchCursor(
                                             toRaster, ["Value", classNameField_to])]
 
-        arcpy.AddMessage((fromRasterList))
-        
-        arcpy.AddMessage((toRasterList))
-
         fromClassValueList = [tpl[0] for tpl in fromRasterList if str(tpl[1]) in fromClassNameList]
         toClassValueList = [tpl[0] for tpl in toRasterList if str(tpl[1]) in toClassNameList]
-
-        arcpy.AddMessage((fromClassValueList))
-        arcpy.AddMessage((toClassValueList))
 
         #Create a list to hold the ClassNames of output, From & To rasters
         classNameLists = []
@@ -278,11 +271,6 @@ class ChangeAnalysis(object):
                           for ttuple in toRasterList
                           if (filterClause(ftuple[0], ttuple[0], "String")
                           and str(ttuple[1]) in toClassNameList)]
-                
-        arcpy.AddMessage("           ")
-        arcpy.AddMessage(classNameLists)
-        arcpy.AddMessage((parameters[4].value))
-        arcpy.AddMessage((classNameField_from))
 
         # Get input Raster properties
         fromRasObj = arcpy.Raster(fromRaster)
@@ -294,17 +282,10 @@ class ChangeAnalysis(object):
         # Convert input Rasters to numpy arrays
         fromRasArray = rasterToNumpy(fromRasObj, fromClassValueList)
         toRasArray = rasterToNumpy(toRasObj, toClassValueList)
-        
-        arcpy.AddMessage("     ")
 
-        arcpy.AddMessage(filterClause(fromRasArray, toRasArray, "Boolean"))
-        arcpy.AddMessage(fromRasArray * toRasArray != 0)
-
-        outNumpyArray = numpy.add(fromRasArray * (max(toClassValueList) + 1), toRasArray,
-                                where = (filterClause(fromRasArray, toRasArray, "Boolean")
-                                         ))
-
-        arcpy.AddMessage(numpy.unique(outNumpyArray))
+        outNumpyArray = numpy.add(fromRasArray * (max(toClassValueList) + 1),           toRasArray, 
+        where = (filterClause(fromRasArray, toRasArray, "Boolean")
+                                 ))
 
         outUniqueValues = list(numpy.unique(outNumpyArray))
         outClassValues = range(len(outUniqueValues))
@@ -319,58 +300,11 @@ class ChangeAnalysis(object):
         outRaster = arcpy.NumPyArrayToRaster(outNumpyArray,lowerLeft,
                                              cellSize[0],cellSize[1],value_to_nodata=0)
 
-        #outRaster = Lookup(outRaster, "Value")
-        #outRaster = arcpy.Remap(outRaster)
+        
         outRaster.save(r"{}".format(outputRaster))
 
         addFields(outputRaster, classNameLists, classNameField_from)
 
-##        if classNameField_from == str:
-##            #Create three tmp.variables to determine the length of the class name fields
-##            classNameLen = 0
-##            fromNameLen = 0
-##            toNameLen = 0
-##            for lst in classNameLists:
-##                if classNameLen < len(lst[0]):
-##                    classNameLen = len(lst[0])
-##                if fromNameLen < len(lst[1]):
-##                    fromNameLen = len(lst[1])
-##                if toNameLen < len(lst[2]):
-##                    toNameLen = len(lst[2])    
-##
-##            #Add required fields to output raster table
-##            arcpy.management.AddField(outRaster, "Class_name", "TEXT", field_length=classNameLen)
-##            arcpy.management.AddField(outRaster, "From_class", "TEXT", field_length=fromNameLen)
-##            arcpy.management.AddField(outRaster, "To_class", "TEXT", field_length=toNameLen)
-##            arcpy.management.AddField(outRaster, "Area_sq_km", "DOUBLE", 15, field_alias="Area (sq.km)")
-##
-##            #Calculate field values for above added fields
-##            with arcpy.da.UpdateCursor(outputRaster, ["Class_name", "From_class", "To_class", "Count", "Area_sq_km"]) as cursor:
-##                n = 0
-##                for row in cursor:
-##                    row[0] = classNameLists[n][0]
-##                    row[1] = classNameLists[n][1]
-##                    row[2] = classNameLists[n][2]
-##                    row[4] = row[3] * cellSize[0] * cellSize[1] / (1000 * 1000)
-##                    cursor.updateRow(row)
-##                    n += 1
-##        else:
-##            #Add required fields to output raster table
-##            arcpy.management.AddField(outRaster, "Class_name", "TEXT", "None")
-##            arcpy.management.AddField(outRaster, "From_class", "LONG", "None")
-##            arcpy.management.AddField(outRaster, "To_class", "LONG", "None")
-##            arcpy.management.AddField(outRaster, "Area_sq_km", "DOUBLE", 15, field_alias="Area (sq.km)")
-##
-##            #Calculate field values for above added fields
-##            with arcpy.da.UpdateCursor(outputRaster, ["Class_name", "From_class", "To_class", "Count", "Area_sq_km"]) as cursor:
-##                n = 0
-##                for row in cursor:
-##                    row[0] = classNameLists[n][0]
-##                    row[1] = classNameLists[n][1]
-##                    row[2] = classNameLists[n][2]
-##                    row[4] = row[3] * cellSize[0] * cellSize[1] / (1000 * 1000)
-##                    cursor.updateRow(row)
-##                    n += 1
         return
 
     def postExecute(self, parameters):
